@@ -195,9 +195,22 @@ public class HugeGraphSparkLoader implements Serializable {
             case FILE:
             case HDFS:
                 FileSource fileSource = struct.input().asFileSource();
+                String [] headers =  fileSource.header();
+                String [] values = row.mkString().split(fileSource.delimiter());
+                LOG.info("header length: " + headers.length);
+                LOG.info("Row Split length: " + values.length);
+                for (int i = 0; i < fileSource.header().length; i++) {
+                    LOG.info("header: " + headers[i]);
+                    LOG.info("Row Split : " + values[i]);
+                }
+
+                LOG.info("Row: " + row.mkString());
+
+                LOG.info("delimiter: " + fileSource.delimiter());
                 elements = builder.build(fileSource.header(),
                                          row.mkString()
-                                            .split(fileSource.delimiter()));
+                                            .split(fileSource.delimiter()));//此处 只要传递的是对应的字符数组即可
+                //TODO： 优化空间 ｜存在BUG 改为 "," 成功运行
                 break;
             case JDBC:
                 //TODO: implement jdbc
