@@ -58,7 +58,7 @@ public final class HugeGraphLoader {
 
     public static final Logger LOG = Log.logger(HugeGraphLoader.class);
 
-    private final LoadContext context;
+    private final LoadContext context;//承载整个
     private final LoadMapping mapping;
     private final TaskManager manager;
 
@@ -186,7 +186,7 @@ public final class HugeGraphLoader {
     }
 
     private void loadInputs(List<InputStruct> structs) {
-        if (this.context.options().checkVertex) {
+        if (this.context.options().checkVertex) {//导入点边的顺序要处理
             LOG.info("Forced to load vertices before edges since set " +
                      "option check-vertex=true");
             SplittedInputStructs splitted = this.splitStructs(structs);
@@ -291,7 +291,7 @@ public final class HugeGraphLoader {
         this.context.summary().addTimeRange(mapping.type(), start, end);
 
         if (this.context.options().dryRun || CollectionUtils.isEmpty(batches)) {
-            return;
+            return;//是否仅仅是解析 不写入底层
         }
         // Async load
         for (List<Record> batch : batches) {
