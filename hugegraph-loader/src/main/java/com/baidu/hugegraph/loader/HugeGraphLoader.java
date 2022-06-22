@@ -58,9 +58,9 @@ public final class HugeGraphLoader {
 
     public static final Logger LOG = Log.logger(HugeGraphLoader.class);
 
-    private final LoadContext context;//承载整个
-    private final LoadMapping mapping;
-    private final TaskManager manager;
+    private final LoadContext context;//承载整个进程参数，进程指标
+    private final LoadMapping mapping;//承载struct 映射文件
+    private final TaskManager manager;//多线程运行
 
     public static void main(String[] args) {
         HugeGraphLoader loader;
