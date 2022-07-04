@@ -112,10 +112,10 @@ public abstract class InsertTask implements Runnable {
         List<GraphElement> elements = new ArrayList<>(batch.size());
         batch.forEach(r -> elements.add(r.element()));
         if (this.type().isVertex()) {
-            client.graph().addVertices((List<Vertex>) (Object) elements);//批量
+            client.graph().addVertices((List<Vertex>) (Object) elements);//批量发送 vertex
         } else {
             client.graph().addEdges((List<Edge>) (Object) elements,
-                                    checkVertex);
+                                    checkVertex); // 批量发送edge
         }
     }
 

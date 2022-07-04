@@ -243,7 +243,7 @@ public final class HugeGraphLoader {
             try {
                 // Read next line from data source
                 if (reader.hasNext()) {
-                    lines.add(reader.next());
+                    lines.add(reader.next());//读取文件是多线程 还是 单线程
                     metrics.increaseReadSuccess();
                 } else {
                     finished = true;
@@ -257,9 +257,9 @@ public final class HugeGraphLoader {
             if (reachedMaxReadLines) {
                 finished = true;
             }
-            if (lines.size() >= batchSize || finished) {
+            if (lines.size() >= batchSize || finished) {//批量提交 或者结束的时候 提交最后的数据
                 List<ParseTask> tasks = taskBuilder.build(lines);
-                for (ParseTask task : tasks) {
+                for (ParseTask task : tasks) {//单个struct  会有几个 1个？
                     this.executeParseTask(struct, task.mapping(), task);
                 }
                 // Confirm offset to avoid lost records
