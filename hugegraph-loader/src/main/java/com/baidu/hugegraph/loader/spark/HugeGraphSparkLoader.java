@@ -87,11 +87,11 @@ public class HugeGraphSparkLoader implements Serializable {
 
         SparkSession session = SparkSession.builder().getOrCreate();
         for (InputStruct struct : structs) {
-            Dataset<Row> ds = read(session, struct);
-            ds.foreachPartition((Iterator<Row> p) -> {
+            Dataset<Row> ds = read(session, struct); //根据struct format 读取对应的source 文件
+            ds.foreachPartition((Iterator<Row> p) -> { //repartition 设置 增加并行度
                 LoadContext context = initPartition(this.loadOptions, struct);
                 p.forEachRemaining((Row row) -> {
-                    loadRow(struct, row, p, context);
+                    loadRow(struct, row, p, context); // 批量写入数据
                 });
                 context.close();
             });
@@ -195,17 +195,18 @@ public class HugeGraphSparkLoader implements Serializable {
             case HDFS:
                 FileSource fileSource = struct.input().asFileSource();
                 String [] headers =  fileSource.header();
+                LOG.debug("Row: " + row.mkString());
                 String [] values = row.mkString().split(fileSource.delimiter());
-                LOG.info("header length: " + headers.length);
-                LOG.info("Row Split length: " + values.length);
+                LOG.debug("header length: " + headers.length);
+                LOG.debug("Row Split length: " + values.length);
                 for (int i = 0; i < fileSource.header().length; i++) {
-                    LOG.info("header: " + headers[i]);
-                    LOG.info("Row Split : " + values[i]);
+                    LOG.debug("header: " + headers[i]);
+                    LOG.debug("Row Split : " + values[i]);
                 }
 
-                LOG.info("Row: " + row.mkString());
 
-                LOG.info("delimiter: " + fileSource.delimiter());
+
+                LOG.debug("delimiter: " + fileSource.delimiter());
                 elements = builder.build(fileSource.header(),
                                          row.mkString()
                                             .split(fileSource.delimiter()));//此处 只要传递的是对应的字符数组即可
