@@ -1,56 +1,28 @@
-/*
- * Copyright 2017 HugeGraph Authors
- *
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements. See the NOTICE file distributed with this
- * work for additional information regarding copyright ownership. The ASF
- * licenses this file to You under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations
- * under the License.
- */
-
 package com.baidu.hugegraph.loader.spark;
 
-import com.baidu.hugegraph.backend.serializer.BinarySerializer;
+import com.baidu.hugegraph.backend.id.Id;
+import com.baidu.hugegraph.backend.id.IdGenerator;
 import com.baidu.hugegraph.backend.store.BackendEntry;
-//import com.baidu.hugegraph.backend.store.hbase.HbaseSerializer;
-import com.baidu.hugegraph.config.HugeConfig;
 import com.baidu.hugegraph.driver.GraphManager;
+import com.baidu.hugegraph.driver.HugeClient;
 import com.baidu.hugegraph.loader.builder.EdgeBuilder;
 import com.baidu.hugegraph.loader.builder.ElementBuilder;
 import com.baidu.hugegraph.loader.builder.VertexBuilder;
+import com.baidu.hugegraph.loader.direct.struct.HugeType;
+import com.baidu.hugegraph.loader.direct.util.BytesBuffer;
+import com.baidu.hugegraph.loader.direct.util.GraphSchema;
 import com.baidu.hugegraph.loader.executor.LoadContext;
 import com.baidu.hugegraph.loader.executor.LoadOptions;
-import com.baidu.hugegraph.loader.mapping.EdgeMapping;
-import com.baidu.hugegraph.loader.mapping.VertexMapping;
-import com.baidu.hugegraph.loader.mapping.ElementMapping;
-import com.baidu.hugegraph.loader.mapping.InputStruct;
-import com.baidu.hugegraph.loader.mapping.LoadMapping;
+import com.baidu.hugegraph.loader.mapping.*;
 import com.baidu.hugegraph.loader.source.InputSource;
-import com.baidu.hugegraph.loader.source.file.FileFilter;
-import com.baidu.hugegraph.loader.source.file.FileFormat;
-import com.baidu.hugegraph.loader.source.file.FileSource;
-import com.baidu.hugegraph.loader.source.file.SkippedLine;
-import com.baidu.hugegraph.loader.source.file.Compression;
+import com.baidu.hugegraph.loader.source.file.*;
 import com.baidu.hugegraph.loader.util.Printer;
 import com.baidu.hugegraph.structure.GraphElement;
 import com.baidu.hugegraph.structure.HugeEdge;
 import com.baidu.hugegraph.structure.HugeVertex;
-import com.baidu.hugegraph.structure.graph.UpdateStrategy;
-import com.baidu.hugegraph.structure.graph.Vertex;
-import com.baidu.hugegraph.structure.graph.Edge;
-import com.baidu.hugegraph.structure.graph.BatchEdgeRequest;
-import com.baidu.hugegraph.structure.graph.BatchVertexRequest;
+import com.baidu.hugegraph.structure.graph.*;
+import com.baidu.hugegraph.structure.schema.PropertyKey;
 import com.baidu.hugegraph.util.Log;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FsShell;
@@ -80,23 +52,23 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.util.*;
 
-public class HugeGraphSparkLoaderHFile1 implements Serializable {
+public class HugeGraphSparkLoaderHFile2 implements Serializable {
 
     public static final Logger LOG = Log.logger(HugeGraphSparkLoader.class);
 
-    private final LoadOptions loadOptions;
-    private final Map<ElementBuilder, List<GraphElement>> builders;
-    //private final Map<String, List<BackendEntry>> buildersEntry;
+    private transient final LoadOptions loadOptions;
+    private transient final Map<ElementBuilder, List<GraphElement>> builders;
+
     public static final String COL_FAMILY = "pd";
     private static final String APP_NAME = "FisherCoder-HFile-Generator";
-//    private final HugeConfig config;
-//    private final BinarySerializer hbaseSer ;
-
+    private static final int edgeLogicPartitions = 16;
+    private static final int vertexLogicPartitions = 8;
+    private GraphSchema graphSchema;
 
     public static void main(String[] args) throws Exception {
-        HugeGraphSparkLoaderHFile1 loader;
+        HugeGraphSparkLoaderHFile2 loader;
         try {
-            loader = new HugeGraphSparkLoaderHFile1(args);
+            loader = new HugeGraphSparkLoaderHFile2(args);
         } catch (Throwable e) {
             Printer.printError("Failed to start loading", e);
             return;
@@ -104,15 +76,10 @@ public class HugeGraphSparkLoaderHFile1 implements Serializable {
         loader.load();
     }
 
-    public HugeGraphSparkLoaderHFile1(String[] args) {
+    public HugeGraphSparkLoaderHFile2(String[] args) {
         this.loadOptions = LoadOptions.parseOptions(args);
         this.builders = new HashMap<>();
-        //this.buildersEntry = new HashMap<>();
-//        this.config = com.baidu.hugegraph.unit.FakeObjects.newConfig();
-//        this.config.setProperty("hbase.vertex_partitions",4);
-//        this.config.setProperty("hbase.enable_partition",true);
-//        this.config.setProperty("hbase.edge_partitions",4);
-//        this.hbaseSer = new HbaseSerializer(config);
+
     }
 
     public void load() throws Exception {
@@ -134,6 +101,10 @@ public class HugeGraphSparkLoaderHFile1 implements Serializable {
         SparkSession spark = SparkSession.builder()
                 .config(conf)
                 .getOrCreate();
+
+        HugeClient client = HugeClient.builder("http://localhost:8081", "hugegraph").build();
+        graphSchema = new GraphSchema(client);//schema 缓存到内存 对象中 共享
+
         for (InputStruct struct : structs) {
             if (false) {//API
                 Dataset<Row> ds = read(spark, struct); //根据struct format 读取对应的source 文件
@@ -145,8 +116,10 @@ public class HugeGraphSparkLoaderHFile1 implements Serializable {
                     context.close();
                 });
             } else if (true) {//HFile
-                JavaRDD<Row> rdd = readJsonTable(spark);
-                hFilesToHBase(rdd);
+                JavaRDD<Row> rdd = read(spark, struct).toJavaRDD();
+                //JavaRDD<Row> rdd = readJsonTable(spark);
+                LoadContext context = initPartition(this.loadOptions, struct);
+                hFilesToHBase(rdd, struct, this.loadOptions);
             } else if (false) {//sst
 
             }
@@ -292,8 +265,7 @@ public class HugeGraphSparkLoaderHFile1 implements Serializable {
 //                    BackendEntry entryVertex = hbaseSer.writeVertex(vertex);
 //                    elements.add(entryVertex);
                 }
-                //this.buildersEntry.put("vertex",elements);
-                //g.addVertices((List<Vertex>) (Object) graphElements);
+
             } else {
                 //g.addEdges((List<Edge>) (Object) graphElements);
                 for(HugeEdge edge:(List< HugeEdge>) (Object) graphElements){
@@ -335,37 +307,101 @@ public class HugeGraphSparkLoaderHFile1 implements Serializable {
      * @param rdd
      * @throws Exception
      */
-    //public void hFilesToHBase(JavaRDD<Row> rdd, InputStruct struct, BinarySerializer hbaseSer, Map<ElementBuilder, List<GraphElement>> builders,Map<String, List<BackendEntry>> buildersEntry) throws Exception {
-
-    public void hFilesToHBase(JavaRDD<Row> rdd) throws Exception {
+    public void hFilesToHBase(JavaRDD<Row> rdd, InputStruct struct, LoadOptions loadOptions) throws Exception {
         JavaPairRDD<ImmutableBytesWritable, KeyValue> javaPairRdd = rdd.mapToPair(
                 new PairFunction<Row, ImmutableBytesWritable, KeyValue>() {
 
                     public Tuple2<ImmutableBytesWritable, KeyValue> call(Row row) throws Exception {
                         /**
                          * 核心逻辑：
-                         * Row ---》BackendEntry
+                         * Row ---> Vertex/Edge ----> KV
                          */
-//                        HugeConfig config = com.baidu.hugegraph.unit.FakeObjects.newConfig();
-//                        BinarySerializer hbaseSer = new HbaseSerializer(config);
-//                        config.setProperty("hbase.vertex_partitions",4);
-//                        config.setProperty("hbase.enable_partition",true);
-//                        config.setProperty("hbase.edge_partitions",4);
-//
-//                        HugeEdge edge = new com.baidu.hugegraph.unit.FakeObjects().newEdge("123", "456");
-                        BackendEntry entryEdge = null ;// hbaseSer.writeEdge(edge);
-                        ImmutableBytesWritable rowKey = new ImmutableBytesWritable();
-                        KeyValue keyValue = null;
-                        byte[] rowKeyBytes = entryEdge.id().asBytes();
-                        rowKey.set(rowKeyBytes);
+                        List<GraphElement> elementsElement;//存储返回的  GraphElement: Vertex/Edge
 
-                        for(BackendEntry.BackendColumn column : entryEdge.columns()){
-                            keyValue = new KeyValue(rowKeyBytes,
-                                    Bytes.toBytes(COL_FAMILY),
-                                    column.name,
-                                    column.value);
+                        Map<ElementBuilder, List<GraphElement>> builders1 = new HashMap<>();
+
+                        LoadContext context = new LoadContext(loadOptions);
+                        for (VertexMapping vertexMapping : struct.vertices()) {
+                            builders1.put(
+                                    new VertexBuilder(context, struct, vertexMapping),
+                                    new ArrayList<>());
+                        }
+                        for (EdgeMapping edgeMapping : struct.edges()) {
+                            builders1.put(new EdgeBuilder(context, struct, edgeMapping),
+                                    new ArrayList<>());
                         }
 
+                        /**
+                         * 构建 vertex/edge --->  K-V
+                         */
+                        ImmutableBytesWritable rowKey = new ImmutableBytesWritable();
+                        KeyValue keyValue = null;
+
+                        for (Map.Entry<ElementBuilder, List<GraphElement>> builderMap : builders1.entrySet()) {// 控制类型 点/边
+                            ElementMapping elementMapping = builderMap.getKey().mapping();
+                            // Parse
+                            if (elementMapping.skip()) {
+                                continue;
+                            }
+
+                            ElementBuilder builder = builderMap.getKey();
+
+                            if ("".equals(row.mkString())) {
+                                break;
+                            }
+
+                            switch (struct.input().type()) {
+                                case FILE:
+                                case HDFS:
+                                    FileSource fileSource = struct.input().asFileSource();
+
+                                    String [] headers =  fileSource.header();
+                                    LOG.debug("Row: " + row.mkString());
+                                    String [] values = row.mkString().split(fileSource.delimiter());
+                                    LOG.debug("header length: " + headers.length);
+                                    LOG.debug("Row Split length: " + values.length);
+                                    for (int i = 0; i < fileSource.header().length; i++) {
+                                        LOG.debug("header: " + headers[i]);
+                                        LOG.debug("Row Split : " + values[i]);
+                                    }
+
+                                    LOG.debug("delimiter: " + fileSource.delimiter());
+
+                                    elementsElement = builder.build(fileSource.header(),
+                                            row.mkString()
+                                                    .split(fileSource.delimiter()));//此处 只要传递的是对应的字符数组即可
+                                    break;
+                                default:
+                                    throw new AssertionError(String.format(
+                                            "Unsupported input source '%s'",
+                                            struct.input().type()));
+                            }
+
+                            boolean isVertex = builder.mapping().type().isVertex();
+                            if (isVertex) {
+                                for (Vertex vertex : (List<Vertex>) (Object) elementsElement) {
+                                    byte[] rowkey = getKeyBytes(vertex);
+                                    byte[] values = getValueBytes(vertex);
+                                    rowKey.set(rowkey);
+                                    keyValue = new KeyValue(rowkey,
+                                            Bytes.toBytes(COL_FAMILY),
+                                            Bytes.toBytes(""),
+                                            values);
+                                }
+
+                            } else {
+                                for (Edge edge : (List<Edge>) (Object) elementsElement) {
+                                    byte[] rowkey = getKeyBytes(edge);
+                                    byte[] values = getValueBytes(edge);
+                                    rowKey.set(rowkey);
+                                    keyValue = new KeyValue(rowkey,
+                                            Bytes.toBytes(COL_FAMILY),
+                                            Bytes.toBytes(""),
+                                            values);
+                                }
+
+                            }
+                        }
                         return new Tuple2<ImmutableBytesWritable, KeyValue>(rowKey, keyValue);
                     }
                 });
@@ -379,7 +415,7 @@ public class HugeGraphSparkLoaderHFile1 implements Serializable {
 
         Job job = new Job(baseConf, APP_NAME);
 
-        Partitioner partitioner = new HugeGraphSparkLoaderHFile1.IntPartitioner(5);//预分区处理
+        Partitioner partitioner = new HugeGraphSparkLoaderHFile2.IntPartitioner(5);//预分区处理
 
         JavaPairRDD<ImmutableBytesWritable, KeyValue> repartitionedRdd =
                 javaPairRdd.repartitionAndSortWithinPartitions(partitioner);//精髓 partition内部做到有序
@@ -391,7 +427,7 @@ public class HugeGraphSparkLoaderHFile1 implements Serializable {
 
         Configuration config = job.getConfiguration();
         FileSystem fs = FileSystem.get(config);
-        String path  = fs.getWorkingDirectory().toString()+"/hfile-gen"+"/"+System.currentTimeMillis();//HFile 存储路径
+        String path = fs.getWorkingDirectory().toString() + "/hfile-gen" + "/" + System.currentTimeMillis();//HFile 存储路径
 
         repartitionedRdd.saveAsNewAPIHadoopFile(
                 path,
@@ -420,98 +456,6 @@ public class HugeGraphSparkLoaderHFile1 implements Serializable {
         }
     }
 
-
-//    /**
-//     * 核心步骤：
-//     * 1.读取 source 文件 序列化
-//     * 2.进行预分区
-//     * 3.生成HFile
-//     * 4.load 到HBase
-//     * @param rdd
-//     * @throws Exception
-//     */
-//    protected void hFilesToHBase(JavaRDD<Row> rdd) throws Exception {
-//        JavaPairRDD<ImmutableBytesWritable, KeyValue> javaPairRdd = rdd.mapToPair(
-//                new PairFunction<Row, ImmutableBytesWritable, KeyValue>() {
-//                    public Tuple2<ImmutableBytesWritable, KeyValue> call(Row row) throws Exception {
-//                        String key = (String) row.get(0);
-//                        String value = (String) row.get(1);
-//
-////                        HugeConfig config = com.baidu.hugegraph.unit.FakeObjects.newConfig();
-////                        config.setProperty("hbase.vertex_partitions",4);
-////                        config.setProperty("hbase.enable_partition",true);
-////                        config.setProperty("hbase.edge_partitions",4);
-////
-////                        BinarySerializer hbaseSer = new HbaseSerializer(config);
-//                        HugeEdge edge = new com.baidu.hugegraph.unit.FakeObjects().newEdge("123", "456");
-//
-//                        BackendEntry entryEdge = hbaseSer.writeEdge(edge);
-//
-//                        ImmutableBytesWritable rowKey = new ImmutableBytesWritable();
-//                        byte[] rowKeyBytes = entryEdge.id().asBytes();
-//                        rowKey.set(rowKeyBytes);
-//                        KeyValue keyValue = null;
-//                        for(BackendEntry.BackendColumn column : entryEdge.columns()){
-//                            keyValue = new KeyValue(rowKeyBytes,
-//                                    Bytes.toBytes(COL_FAMILY),
-//                                    column.name,
-//                                    column.value);
-//                        }
-//
-//                        return new Tuple2<ImmutableBytesWritable, KeyValue>(rowKey, keyValue);
-//                    }
-//                });
-//
-//        Configuration baseConf = HBaseConfiguration.create();
-//        Configuration conf = new Configuration();
-//        conf.set("hbase.zookeeper.quorum", "localhost");
-//        conf.set("hbase.zookeeper.property.clientPort", "2181");
-//        Connection conn = ConnectionFactory.createConnection(conf);
-//        Table table = conn.getTable(TableName.valueOf("test_salt1"));
-//
-//        Job job = new Job(baseConf, APP_NAME);
-//
-//        Partitioner partitioner = new HugeGraphSparkLoaderHFile1.IntPartitioner(5);//预分区处理
-//
-//        JavaPairRDD<ImmutableBytesWritable, KeyValue> repartitionedRdd =
-//                javaPairRdd.repartitionAndSortWithinPartitions(partitioner);//精髓 partition内部做到有序
-//
-//
-//        HFileOutputFormat2.configureIncrementalLoadMap(job, table.getDescriptor());
-//
-//        System.out.println("Done configuring incremental load....");
-//
-//        Configuration config = job.getConfiguration();
-//        FileSystem fs = FileSystem.get(config);
-//        String path  = fs.getWorkingDirectory().toString()+"/hfile-gen"+"/"+System.currentTimeMillis();//HFile 存储路径
-//
-//        repartitionedRdd.saveAsNewAPIHadoopFile(
-//                path,
-//                ImmutableBytesWritable.class,
-//                KeyValue.class,
-//                HFileOutputFormat2.class,
-//                config
-//        );
-//        System.out.println("Saved to HFiles to: " + path);
-//
-//        if (true) {
-//            FsShell shell = new FsShell(conf);
-//            try {
-//                shell.run(new String[]{"-chmod", "-R", "777", path});
-//            } catch (Exception e) {
-//                System.out.println("Couldnt change the file permissions " + e
-//                        + " Please run command:"
-//                        + "hbase org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles "
-//                        + path + " '"
-//                        + "test" + "'\n"
-//                        + " to load generated HFiles into HBase table");
-//            }
-//            System.out.println("Permissions changed.......");
-//            loadHfiles(path);
-//            System.out.println("HFiles are loaded into HBase tables....");
-//        }
-//    }
-
     protected void loadHfiles(String path) throws Exception {
         Configuration baseConf = HBaseConfiguration.create();
         baseConf.set("hbase.zookeeper.quorum", "localhost");
@@ -523,6 +467,70 @@ public class HugeGraphSparkLoaderHFile1 implements Serializable {
         //TODO: load HFile to HBase
         loader.run(new String []{path, String.valueOf(table.getName())});
 
+    }
+
+
+
+    public byte[] getKeyBytes(GraphElement e) {
+        byte[] array = null;
+        if(e.type() == "vertex" && e.id() != null){
+            BytesBuffer buffer = BytesBuffer.allocate(2 + 1 + e.id().toString().length());
+            buffer.writeShort(getPartition(HugeType.VERTEX, IdGenerator.of(e.id())));
+            buffer.writeId(IdGenerator.of(e.id()));
+            array = buffer.bytes();
+        }else if ( e.type() == "edge" ){
+            BytesBuffer buffer = BytesBuffer.allocate(BytesBuffer.BUF_EDGE_ID);
+            Edge edge = (Edge)e;
+            buffer.writeShort(getPartition(HugeType.EDGE, IdGenerator.of(edge.sourceId())));
+            buffer.writeId(IdGenerator.of(edge.sourceId()));
+            buffer.write(HugeType.EDGE_OUT.code());
+            long label = graphSchema.getEdgeLabel(e.label()).id();
+            buffer.writeId(IdGenerator.of(graphSchema.getEdgeLabel(e.label()).id()));//出现错误
+            buffer.writeStringWithEnding("");
+            buffer.writeId(IdGenerator.of(edge.targetId()));
+            array = buffer.bytes();
+        }
+        return array;
+    }
+
+    public short getPartition(HugeType type, Id id) {
+        int hashcode = Arrays.hashCode(id.asBytes());
+        short partition = 1;
+        if (type.isEdge()) {
+            partition = (short) (hashcode % edgeLogicPartitions);
+        } else if (type.isVertex()) {
+            partition = (short) (hashcode % vertexLogicPartitions);
+        }
+        return partition > 0 ? partition : (short) -partition;
+    }
+
+
+    public byte[] getValueBytes(GraphElement e) {
+        byte[] array = null;
+        if(e.type() == "vertex"){
+            int propsCount = e.properties().size() ;//vertex.sizeOfProperties();
+            BytesBuffer buffer = BytesBuffer.allocate(8 + 16 * propsCount);
+            buffer.writeId(IdGenerator.of(graphSchema.getVertexLabel(e.label()).id()));
+            buffer.writeVInt(propsCount);
+            for(Map.Entry<String, Object> entry : e.properties().entrySet()){
+                PropertyKey propertyKey = graphSchema.getPropertyKey(entry.getKey());
+                buffer.writeVInt(propertyKey.id().intValue());
+                buffer.writeProperty(propertyKey.dataType(),entry.getValue());
+            }
+            array = buffer.bytes();
+        } else if ( e.type() == "edge" ){
+            int propsCount =  e.properties().size();
+            BytesBuffer buffer = BytesBuffer.allocate(4 + 16 * propsCount);
+            buffer.writeVInt(propsCount);
+            for(Map.Entry<String, Object> entry : e.properties().entrySet()){
+                PropertyKey propertyKey = graphSchema.getPropertyKey(entry.getKey());
+                buffer.writeVInt(propertyKey.id().intValue());
+                buffer.writeProperty(propertyKey.dataType(),entry.getValue());
+            }
+            array = buffer.bytes();
+        }
+
+        return array;
     }
 
     //精髓 repartitionAndSort
@@ -591,13 +599,4 @@ public class HugeGraphSparkLoaderHFile1 implements Serializable {
             }
         }
     }
-
-    public JavaRDD<Row> readJsonTable(SparkSession spark) throws ClassNotFoundException {
-
-        Dataset<Row> rows = null;
-        String path = "file:///Users/yangjiaqi/Documents/learnStudent/ETLWork/test.csv";
-        rows = spark.read().csv(path);
-        return rows.toJavaRDD();
-    }
 }
-

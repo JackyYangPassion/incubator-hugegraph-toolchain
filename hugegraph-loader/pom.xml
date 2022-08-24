@@ -50,28 +50,35 @@
 <!--            </exclusions>-->
         </dependency>
 
+<!--        <dependency>-->
+<!--            <groupId>com.baidu.hugegraph</groupId>-->
+<!--            <artifactId>hugegraph-test</artifactId>-->
+<!--            <version>0.12.0</version>-->
+<!--            <exclusions>-->
+<!--                <exclusion>-->
+<!--                    <groupId>com.baidu.hugegraph</groupId>-->
+<!--                    <artifactId>hbase-shaded-endpoint</artifactId>-->
+<!--                </exclusion>-->
+<!--                <exclusion>-->
+<!--                <groupId>com.baidu.hugegraph</groupId>-->
+<!--                <artifactId>hugegraph-api</artifactId>-->
+<!--                </exclusion>-->
+<!--            </exclusions>-->
+<!--        </dependency>-->
+
         <dependency>
             <groupId>com.baidu.hugegraph</groupId>
-            <artifactId>hugegraph-test</artifactId>
-            <version>0.12.0</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.baidu.hugegraph</groupId>
-                    <artifactId>hbase-shaded-endpoint</artifactId>
-                </exclusion>
-                <exclusion>
-                <groupId>com.baidu.hugegraph</groupId>
-                <artifactId>hugegraph-api</artifactId>
-                </exclusion>
-            </exclusions>
+            <artifactId>hugegraph-client</artifactId>
+            <version>2.0.1</version>
         </dependency>
+
 
 
         <dependency>
             <groupId>org.apache.hbase</groupId>
             <artifactId>hbase-common</artifactId>
             <version>${hbase.version}</version>
-<exclusions>
+            <exclusions>
                             <exclusion>
                                 <groupId>com.sun.jersey</groupId>
                                 <artifactId>jersey-server</artifactId>
@@ -155,6 +162,28 @@
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.version}</artifactId>
             <version>${spark.version}</version>
+        <exclusions>
+            <exclusion>
+                <groupId>org.glassfish.jersey.core</groupId>
+                <artifactId>jersey-common</artifactId>
+            </exclusion>
+            <exclusion>
+                <groupId>org.glassfish.jersey.core</groupId>
+                <artifactId>jersey-client</artifactId>
+            </exclusion>
+            <exclusion>
+                <groupId>org.glassfish.jersey.core</groupId>
+                <artifactId>jersey-server</artifactId>
+            </exclusion>
+            <exclusion>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+            </exclusion>
+            <!--                <exclusion>-->
+            <!--                    <groupId>com.fasterxml.jackson.module</groupId>-->
+            <!--                    <artifactId>jackson-module-scala_2.11</artifactId>-->
+            <!--                </exclusion>-->
+        </exclusions>
         </dependency>
         <dependency>
             <groupId>org.apache.spark</groupId>

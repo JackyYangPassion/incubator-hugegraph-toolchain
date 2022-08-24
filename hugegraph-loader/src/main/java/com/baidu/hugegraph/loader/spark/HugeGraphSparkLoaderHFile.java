@@ -21,7 +21,7 @@ package com.baidu.hugegraph.loader.spark;
 
 import com.baidu.hugegraph.backend.serializer.BinarySerializer;
 import com.baidu.hugegraph.backend.store.BackendEntry;
-import com.baidu.hugegraph.backend.store.hbase.HbaseSerializer;
+//import com.baidu.hugegraph.backend.store.hbase.HbaseSerializer;
 import com.baidu.hugegraph.config.HugeConfig;
 import com.baidu.hugegraph.driver.GraphManager;
 import com.baidu.hugegraph.loader.builder.EdgeBuilder;
@@ -340,11 +340,11 @@ public class HugeGraphSparkLoaderHFile implements Serializable {
                          * 核心逻辑：
                          * Row ---》BackendEntry
                          */
-                        HugeConfig config = com.baidu.hugegraph.unit.FakeObjects.newConfig();
-                        config.setProperty("hbase.vertex_partitions", 4);
-                        config.setProperty("hbase.enable_partition", true);
-                        config.setProperty("hbase.edge_partitions", 4);
-                        BinarySerializer hbaseSer = new HbaseSerializer(config);
+//                        HugeConfig config = com.baidu.hugegraph.unit.FakeObjects.newConfig();
+//                        config.setProperty("hbase.vertex_partitions", 4);
+//                        config.setProperty("hbase.enable_partition", true);
+//                        config.setProperty("hbase.edge_partitions", 4);
+//                        BinarySerializer hbaseSer = new HbaseSerializer(config);
                         List<BackendEntry> elements = new ArrayList<>();
                         List<GraphElement> elementsElement;
                         Map<ElementBuilder, List<GraphElement>> builders1 = new HashMap<>();
@@ -411,13 +411,13 @@ public class HugeGraphSparkLoaderHFile implements Serializable {
                             boolean isVertex = builder.mapping().type().isVertex();
                             if (isVertex) {
                                 for (HugeVertex vertex : (List<HugeVertex>) (Object) graphElements) {
-                                    BackendEntry entryVertex = hbaseSer.writeVertex(vertex);
+                                    BackendEntry entryVertex = null ; //= hbaseSer.writeVertex(vertex);
                                     elements.add(entryVertex);
                                 }
                                 buildersEntry.put("vertex", elements);
                             } else {
                                 for (HugeEdge edge : (List<HugeEdge>) (Object) graphElements) {
-                                    BackendEntry entryEdge = hbaseSer.writeEdge(edge);
+                                    BackendEntry entryEdge = null ; //= hbaseSer.writeEdge(edge);
                                     elements.add(entryEdge);
                                 }
                                 buildersEntry.put("edge", elements);
