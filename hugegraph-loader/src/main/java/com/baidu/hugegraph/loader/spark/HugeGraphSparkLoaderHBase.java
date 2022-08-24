@@ -2,7 +2,7 @@ package com.baidu.hugegraph.loader.spark;
 
 import com.baidu.hugegraph.backend.serializer.BinarySerializer;
 import com.baidu.hugegraph.backend.store.BackendEntry;
-import com.baidu.hugegraph.backend.store.hbase.HbaseSerializer;
+//import com.baidu.hugegraph.backend.store.hbase.HbaseSerializer;
 import com.baidu.hugegraph.config.HugeConfig;
 import com.baidu.hugegraph.structure.HugeEdge;
 import org.apache.commons.io.FileUtils;
@@ -85,26 +85,26 @@ public class HugeGraphSparkLoaderHBase implements Serializable {
                         String key = (String) row.get(0);
                         String value = (String) row.get(1);
 
-                        HugeConfig config = com.baidu.hugegraph.unit.FakeObjects.newConfig();
-                        config.setProperty("hbase.vertex_partitions",4);
-                        config.setProperty("hbase.enable_partition",true);
-                        config.setProperty("hbase.edge_partitions",4);
-
-                        BinarySerializer hbaseSer = new HbaseSerializer(config);
-                        HugeEdge edge = new com.baidu.hugegraph.unit.FakeObjects().newEdge("123", "456");
-                        BackendEntry entryVertex = hbaseSer.writeVertex(edge.sourceVertex());
-                        BackendEntry entryEdge = hbaseSer.writeEdge(edge);
+//                        HugeConfig config = com.baidu.hugegraph.unit.FakeObjects.newConfig();
+//                        config.setProperty("hbase.vertex_partitions",4);
+//                        config.setProperty("hbase.enable_partition",true);
+//                        config.setProperty("hbase.edge_partitions",4);
+//
+//                        BinarySerializer hbaseSer = new HbaseSerializer(config);
+//                        HugeEdge edge = new com.baidu.hugegraph.unit.FakeObjects().newEdge("123", "456");
+//                        BackendEntry entryVertex = hbaseSer.writeVertex(edge.sourceVertex());
+//                        BackendEntry entryEdge = hbaseSer.writeEdge(edge);
 
                         ImmutableBytesWritable rowKey = new ImmutableBytesWritable();
-                        byte[] rowKeyBytes = entryEdge.id().asBytes();
-                        rowKey.set(rowKeyBytes);
+//                        byte[] rowKeyBytes = entryEdge.id().asBytes();
+//                        rowKey.set(rowKeyBytes);
                         KeyValue keyValue = null;
-                        for(BackendEntry.BackendColumn column : entryEdge.columns()){
-                            keyValue = new KeyValue(rowKeyBytes,
-                                    Bytes.toBytes(COL_FAMILY),
-                                    column.name,
-                                    column.value);
-                        }
+//                        for(BackendEntry.BackendColumn column : entryEdge.columns()){
+//                            keyValue = new KeyValue(rowKeyBytes,
+//                                    Bytes.toBytes(COL_FAMILY),
+//                                    column.name,
+//                                    column.value);
+//                        }
 
                         return new Tuple2<ImmutableBytesWritable, KeyValue>(rowKey, keyValue);
                     }

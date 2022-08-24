@@ -63,7 +63,7 @@ public class HugeGraphSparkLoaderHFile2 implements Serializable {
     private static final String APP_NAME = "FisherCoder-HFile-Generator";
     private static final int edgeLogicPartitions = 16;
     private static final int vertexLogicPartitions = 8;
-    private GraphSchema graphSchema;
+
 
     public static void main(String[] args) throws Exception {
         HugeGraphSparkLoaderHFile2 loader;
@@ -102,8 +102,7 @@ public class HugeGraphSparkLoaderHFile2 implements Serializable {
                 .config(conf)
                 .getOrCreate();
 
-        HugeClient client = HugeClient.builder("http://localhost:8081", "hugegraph").build();
-        graphSchema = new GraphSchema(client);//schema 缓存到内存 对象中 共享
+
 
         for (InputStruct struct : structs) {
             if (false) {//API
@@ -319,6 +318,8 @@ public class HugeGraphSparkLoaderHFile2 implements Serializable {
                         List<GraphElement> elementsElement;//存储返回的  GraphElement: Vertex/Edge
 
                         Map<ElementBuilder, List<GraphElement>> builders1 = new HashMap<>();
+                        HugeClient client = HugeClient.builder("http://localhost:8081", "hugegraph").build();
+                        GraphSchema graphSchema = new GraphSchema(client);//schema 缓存到内存 对象中 共享
 
                         LoadContext context = new LoadContext(loadOptions);
                         for (VertexMapping vertexMapping : struct.vertices()) {
@@ -380,8 +381,8 @@ public class HugeGraphSparkLoaderHFile2 implements Serializable {
                             boolean isVertex = builder.mapping().type().isVertex();
                             if (isVertex) {
                                 for (Vertex vertex : (List<Vertex>) (Object) elementsElement) {
-                                    byte[] rowkey = getKeyBytes(vertex);
-                                    byte[] values = getValueBytes(vertex);
+                                    byte[] rowkey = getKeyBytes(graphSchema, vertex);
+                                    byte[] values = getValueBytes(graphSchema, vertex);
                                     rowKey.set(rowkey);
                                     keyValue = new KeyValue(rowkey,
                                             Bytes.toBytes(COL_FAMILY),
@@ -391,8 +392,8 @@ public class HugeGraphSparkLoaderHFile2 implements Serializable {
 
                             } else {
                                 for (Edge edge : (List<Edge>) (Object) elementsElement) {
-                                    byte[] rowkey = getKeyBytes(edge);
-                                    byte[] values = getValueBytes(edge);
+                                    byte[] rowkey = getKeyBytes(graphSchema, edge);
+                                    byte[] values = getValueBytes(graphSchema, edge);
                                     rowKey.set(rowkey);
                                     keyValue = new KeyValue(rowkey,
                                             Bytes.toBytes(COL_FAMILY),
@@ -402,6 +403,8 @@ public class HugeGraphSparkLoaderHFile2 implements Serializable {
 
                             }
                         }
+
+                        client.close();
                         return new Tuple2<ImmutableBytesWritable, KeyValue>(rowKey, keyValue);
                     }
                 });
@@ -471,7 +474,7 @@ public class HugeGraphSparkLoaderHFile2 implements Serializable {
 
 
 
-    public byte[] getKeyBytes(GraphElement e) {
+    public byte[] getKeyBytes(GraphSchema graphSchema, GraphElement e) {
         byte[] array = null;
         if(e.type() == "vertex" && e.id() != null){
             BytesBuffer buffer = BytesBuffer.allocate(2 + 1 + e.id().toString().length());
@@ -505,7 +508,7 @@ public class HugeGraphSparkLoaderHFile2 implements Serializable {
     }
 
 
-    public byte[] getValueBytes(GraphElement e) {
+    public byte[] getValueBytes(GraphSchema graphSchema, GraphElement e) {
         byte[] array = null;
         if(e.type() == "vertex"){
             int propsCount = e.properties().size() ;//vertex.sizeOfProperties();

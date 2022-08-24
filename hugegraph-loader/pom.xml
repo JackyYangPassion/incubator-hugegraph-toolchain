@@ -179,6 +179,16 @@
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-databind</artifactId>
             </exclusion>
+            <exclusion>
+                <groupId>org.glassfish.jersey.containers</groupId>
+                <artifactId>jersey-container-servlet-core</artifactId>
+            </exclusion>
+
+            <exclusion>
+                <groupId>org.glassfish.jersey.inject</groupId>
+                <artifactId>jersey-hk2</artifactId>
+            </exclusion>
+
             <!--                <exclusion>-->
             <!--                    <groupId>com.fasterxml.jackson.module</groupId>-->
             <!--                    <artifactId>jackson-module-scala_2.11</artifactId>-->
