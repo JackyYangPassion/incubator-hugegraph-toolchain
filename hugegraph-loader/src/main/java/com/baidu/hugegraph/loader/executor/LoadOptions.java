@@ -206,6 +206,18 @@ public class LoadOptions implements Serializable {
                description = "Print usage of HugeGraphLoader")
     public boolean help;
 
+    @Parameter(names = {"--sink-type"}, arity = 1,
+            description = "Sink to different storage")
+    public boolean sinkType = true;
+
+    @Parameter(names = {"--edge-partitions"}, arity = 1,
+            description = "The number of partitions of the HBase edge table")
+    public int edgePartitions = 30;
+
+    @Parameter(names = {"--vertex-partitions"}, arity = 1,
+            description = "The number of partitions of the HBase vertex table")
+    public int vertexPartitions = 10;
+
     public String workModeString() {
         if (this.incrementalMode) {
             return "INCREMENTAL MODE";

@@ -23,6 +23,8 @@ import com.baidu.hugegraph.driver.GraphManager;
 import com.baidu.hugegraph.loader.builder.EdgeBuilder;
 import com.baidu.hugegraph.loader.builder.ElementBuilder;
 import com.baidu.hugegraph.loader.builder.VertexBuilder;
+import com.baidu.hugegraph.loader.direct.util.HBaseSerializer;
+import com.baidu.hugegraph.loader.direct.util.SinkToHBase;
 import com.baidu.hugegraph.loader.executor.LoadContext;
 import com.baidu.hugegraph.loader.executor.LoadOptions;
 import com.baidu.hugegraph.loader.mapping.EdgeMapping;
@@ -46,6 +48,8 @@ import com.baidu.hugegraph.structure.graph.UpdateStrategy;
 import com.baidu.hugegraph.structure.graph.Vertex;
 import com.baidu.hugegraph.util.Log;
 
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -69,8 +73,10 @@ public class HugeGraphSparkLoader implements Serializable {
 
     private final LoadOptions loadOptions;
     private final Map<ElementBuilder, List<GraphElement>> builders;
+    private static HBaseSerializer serializer;
+    private static SinkToHBase sinkToHBase;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         HugeGraphSparkLoader loader;
         try {
             loader = new HugeGraphSparkLoader(args);
@@ -84,25 +90,53 @@ public class HugeGraphSparkLoader implements Serializable {
     public HugeGraphSparkLoader(String[] args) {
         this.loadOptions = LoadOptions.parseOptions(args);
         this.builders = new HashMap<>();
+        System.out.println("host: " + this.loadOptions.host + " port: " + this.loadOptions.port + " graph: " + this.loadOptions.graph);
+        System.out.println("sink mode: " + this.loadOptions.sinkType);
+        serializer = new HBaseSerializer(this.loadOptions);
+        sinkToHBase = new SinkToHBase(serializer);
     }
 
-    public void load() {
+    public void load() throws Exception {
         LoadMapping mapping = LoadMapping.of(this.loadOptions.file);
         List<InputStruct> structs = mapping.structs();
+        boolean sinkType = this.loadOptions.sinkType;
 
-        SparkSession session = SparkSession.builder().getOrCreate();
+        SparkConf conf = new SparkConf()
+                .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+                .set("spark.kryo.registrationRequired", "true")
+                .setAppName("spark-gen-hfile")
+                .setMaster("local[*]");
+
+        conf.registerKryoClasses(
+                new Class[]{org.apache.hadoop.hbase.io.ImmutableBytesWritable.class,
+                        org.apache.hadoop.hbase.KeyValue.class,
+                        Class.forName("org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage"),
+                        Class.forName("scala.reflect.ClassTag$$anon$1")});
+        SparkSession spark = SparkSession.builder()
+                .config(conf)
+                .getOrCreate();
+
+
         for (InputStruct struct : structs) {
-            Dataset<Row> ds = read(session, struct);
-            ds.foreachPartition((Iterator<Row> p) -> {
-                LoadContext context = initPartition(this.loadOptions, struct);
-                p.forEachRemaining((Row row) -> {
-                    loadRow(struct, row, p, context);
+            if ( sinkType ) {
+                Dataset<Row> ds = read(spark, struct);
+                ds.foreachPartition((Iterator<Row> p) -> {
+                    LoadContext context = initPartition(this.loadOptions, struct);
+                    p.forEachRemaining((Row row) -> {
+                        loadRow(struct, row, p, context);
+                    });
+                    context.close();
                 });
-                context.close();
-            });
+            } else {
+                // gen-hfile
+                JavaRDD<Row> rdd = read(spark, struct).toJavaRDD();
+                sinkToHBase.hFilesToHBase(rdd, struct, this.loadOptions);
+            }
         }
-        session.close();
-        session.stop();
+
+        serializer.close();
+        spark.close();
+        spark.stop();
     }
 
     private LoadContext initPartition(
