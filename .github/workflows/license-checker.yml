@@ -39,6 +39,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           log: info
+          token: (should add apache lisence)
           config: .licenserc.yaml
 
       - name: Check Dependencies' License
