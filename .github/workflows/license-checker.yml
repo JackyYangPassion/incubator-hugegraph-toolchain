@@ -41,18 +41,29 @@ jobs:
           log: info
           token: (should add apache lisence)
           config: .licenserc.yaml
-
+  dependency-license:
+    name: Dependency licenses
+    runs-on: ubuntu-latest
+    steps:
       - name: Check Dependencies' License
         uses: apache/skywalking-eyes/dependency@main      # always prefer to use a revision instead of `main`.
         with:
           log: info
           config: .licenserc.yaml
 
+  fix-license-header:
+    name: Fix License Header
+    runs-on: ubuntu-latest
+    steps:
       - name: Fix License Header
         uses: apache/skywalking-eyes/header@main
         with:
           mode: fix
 
+  apply-changes:
+    name: Apply Changes
+    runs-on: ubuntu-latest
+    steps:
       - name: Apply Changes
         uses: EndBug/add-and-commit@v4
         env:
