@@ -42,7 +42,6 @@ jobs:
           token: (should add apache lisence)
           config: .licenserc.yaml
   dependency-license:
-    name: Dependency licenses
     runs-on: ubuntu-latest
     steps:
       - name: Check Dependencies' License
@@ -52,7 +51,6 @@ jobs:
           config: .licenserc.yaml
 
   fix-license-header:
-    name: Fix License Header
     runs-on: ubuntu-latest
     steps:
       - name: Fix License Header
@@ -60,11 +58,6 @@ jobs:
         with:
           mode: fix
           config: .licenserc.yaml
-
-  apply-changes:
-    name: Apply Changes
-    runs-on: ubuntu-latest
-    steps:
       - name: Apply Changes
         uses: EndBug/add-and-commit@v4
         env:
@@ -73,4 +66,4 @@ jobs:
           author_name: License Bot
           author_email: license_bot@github.com
           message: 'Automatic application of license header'
-          config: .licenserc.yaml
+
