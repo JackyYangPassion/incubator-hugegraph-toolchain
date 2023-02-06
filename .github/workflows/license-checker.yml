@@ -41,32 +41,33 @@ jobs:
           log: info
           token: (should add apache lisence)
           config: .licenserc.yaml
-
   dependency-license:
+    if: |
+      ( always() && ! cancelled() ) &&
+      ((github.event_name == 'schedule' && github.repository == 'apache/incubator-hugegraph-toolchain') || needs.changes.outputs.pom == 'true' || needs.changes.outputs.ui == 'true')
+    name: Dependency licenses
+    needs: [changes]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
-      - name: Check Dependencies' License
-        uses: apache/skywalking-eyes/dependency@main      # always prefer to use a revision instead of `main`.
         with:
-          log: debug
-          config: .licenserc.yaml
-
-  fix-license-header:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Fix License Header
-        uses: apache/skywalking-eyes/header@main
+          submodules: true
+      - uses: actions/setup-java@v3
         with:
-          mode: fix
-          config: .licenserc.yaml
-      - name: Apply Changes
-        uses: EndBug/add-and-commit@v4
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          distribution: "temurin"
+          java-version: "11"
+          cache: "maven"
+      - name: Setup Go
+        uses: actions/setup-go@v3
         with:
-          author_name: License Bot
-          author_email: license_bot@github.com
-          message: 'Automatic application of license header'
-
+          go-version: "1.16"
+      - name: Check Dependencies Licenses
+        run: |
+          go install github.com/apache/skywalking-eyes/cmd/license-eye@442d462
+          license-eye dependency resolve --summary ./hugegraph-dist/release-docs/LICENSE.tpl || exit 1
+          if [ ! -z "$(git diff -U0 ./hugegraph-dist/release-docs/LICENSE)" ]; then
+            echo "LICENSE file is not updated correctly"
+            git diff -U0 ./hugegraph-dist/release-docs/LICENSE
+            exit 1
+          fi
