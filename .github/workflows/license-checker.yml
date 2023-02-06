@@ -49,7 +49,7 @@ jobs:
       - name: Check Dependencies' License
         uses: apache/skywalking-eyes/dependency@main      # always prefer to use a revision instead of `main`.
         with:
-          log: info
+          log: debug
           config: .licenserc.yaml
 
   fix-license-header:
