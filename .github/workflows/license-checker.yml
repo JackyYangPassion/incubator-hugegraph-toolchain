@@ -41,10 +41,8 @@ jobs:
           log: info
           token: (should add apache lisence)
           config: .licenserc.yaml
+
   dependency-license:
-    if: |
-      ( always() && ! cancelled() ) &&
-      ((github.event_name == 'schedule' && github.repository == 'apache/incubator-hugegraph-toolchain') || needs.changes.outputs.pom == 'true' || needs.changes.outputs.ui == 'true')
     name: Dependency licenses
     needs: [changes]
     runs-on: ubuntu-latest
